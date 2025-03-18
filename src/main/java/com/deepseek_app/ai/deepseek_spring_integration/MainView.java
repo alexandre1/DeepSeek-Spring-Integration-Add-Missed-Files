@@ -9,6 +9,11 @@ import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Image;
 import com.vaadin.flow.component.notification.Notification;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
@@ -18,8 +23,20 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.server.StreamResource;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.InputStreamResource;
@@ -34,7 +51,15 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Map;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
 @Route("")
 @PageTitle("Receipt")
 @Menu(title = "Receipt", order = 1)
@@ -49,7 +74,49 @@ public class MainView extends VerticalLayout {
     private Component previousPhoto;
     private Paragraph photoName;
 
+    @Value("${spring.ai.openai.api-key}")
+    private String apiKey;
+
+    @Bean
+    public CloseableHttpClient httpClient() {
+        return HttpClients.createDefault();
+    }
+
+
+
     public MainView(ChatClient.Builder builder) {
+        var client = builder.build();
+        var buffer = new MemoryBuffer();
+        var upload = new Upload(buffer);
+        var output = new Div();
+
+        Text instructions = new Text("Upload an image of a receipt. The AI will extract the details and show them below.");
+        add(instructions, upload, output);
+
+        upload.setAcceptedFileTypes("image/*");
+        upload.addSucceededListener(e -> {
+            try {
+                InputStream inputStream = buffer.getInputStream();
+                byte[] bytes = IOUtils.toByteArray(inputStream);
+
+                // Save the file to the server
+                File targetFile = new File(getAppPath() + e.getFileName());
+                FileUtils.copyInputStreamToFile(new ByteArrayInputStream(bytes), targetFile);
+
+                // Display the uploaded image
+                Component component = createComponent(e.getMIMEType(), e.getFileName(), bytes);
+                showOutput(e.getFileName(), component, output);
+                // Construct the request payload using ChatCompletionRequestContent
+
+                analyzeImage();
+            } catch (Exception ex) {
+                System.out.println(ex.getMessage());
+            }
+        });
+    }
+
+    //TODDO Integrate DeepSeek Image when ready
+    public MainView buildMainView(ChatClient.Builder builder) {
         var client = builder.build();
         var buffer = new MemoryBuffer();
         var upload = new Upload(buffer);
@@ -90,13 +157,13 @@ public class MainView extends VerticalLayout {
                     ex.printStackTrace();
                     Notification.show("Error processing the file.");
                 }
-                } catch (IOException ex) {
-                    ex.printStackTrace();
-                    Notification.show("Error processing the file.");
-                } finally {
-                    upload.clearFileList();
-                }
-            });
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                Notification.show("Error processing the file.");
+            } finally {
+                upload.clearFileList();
+            }
+        });
 
     }
 
@@ -167,5 +234,53 @@ public class MainView extends VerticalLayout {
             throw new IllegalStateException("spring.servlet.multipart.location property is not set.");
         }
         return path;
+    }
+    public void analyzeImage() throws JSONException {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            ObjectNode payload = mapper.createObjectNode();
+
+            // Create the messages array
+            ArrayNode messages = mapper.createArrayNode();
+            ObjectNode message = mapper.createObjectNode();
+            message.put("role", "user");
+
+            // Create the content array
+            ArrayNode content = mapper.createArrayNode();
+            content.add(mapper.createObjectNode()
+                    .put("type", "text")
+                    .put("text", "What's in this image?"));
+            content.add(mapper.createObjectNode()
+                    .put("type", "image_url")
+                    .set("image_url", mapper.createObjectNode()
+                            .put("url", "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg")));
+
+            message.set("content", content);
+            messages.add(message);
+
+            // Add fields to the payload
+            payload.put("model", "deepseek-chat");
+            payload.set("messages", messages);
+            payload.put("max_tokens", 300);
+
+            // Print the payload
+            System.out.println("Request Payload: " + payload.toPrettyString());
+
+            // Create the HTTP request
+            HttpPost request = new HttpPost("https://api.deepseek.com/v1/chat/completions");
+            request.setEntity(new StringEntity(payload.toString()));
+            request.addHeader("Content-Type", "application/json");
+            request.addHeader("Authorization", "Bearer " + apiKey); // Replace with your API key
+
+            // Execute the request
+            try (CloseableHttpClient client = HttpClients.createDefault()) {
+                try (CloseableHttpResponse response = client.execute(request)) {
+                    System.out.println("Status Code: " + response.getStatusLine().getStatusCode());
+                    System.out.println("Response Body: " + EntityUtils.toString(response.getEntity()));
+                }
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
     }
 }
