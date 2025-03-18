@@ -44,6 +44,7 @@ import java.util.List;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.security.core.parameters.P;
 import org.springframework.web.multipart.MultipartFile;
 
 @Route("")
@@ -96,7 +97,12 @@ public class MainView extends VerticalLayout {
                 // Call the modified singleFileUpload method
                 String ocrText = singleFileUpload(buffer, e.getFileName());
                 System.out.println("OCR Text: " + ocrText);
+                Receipt receipt = parseReceiptFromOCR(ocrText);
 
+                showReceipt(receipt);
+                Paragraph out = new Paragraph();
+                out.setText(ocrText);
+                // add(out);
                 //analyzeImage(targetFile, buffer);
             } catch (Exception ex) {
                 System.out.println(ex.getMessage());
@@ -231,6 +237,7 @@ public class MainView extends VerticalLayout {
 
                     // Map the OCR text to the Receipt object
                     Receipt receipt = parseReceiptFromOCR(ocrText);
+
                     showReceipt(receipt);
                 }
 
