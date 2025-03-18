@@ -42,6 +42,13 @@
 			<id>Spring Milestones</id>
 			<url>https://repo.spring.io/milestone</url>
 		</repository>
+		<repository>
+			<id>sourceforge-releases</id>
+			<url>https://repo1.maven.org/maven2/</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
 	</repositories>
 	<dependencyManagement>
 		<dependencies>
@@ -170,6 +177,12 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<version>3.4.3</version>
 			<scope>test</scope>
+		</dependency>
+		<!-- https://mvnrepository.com/artifact/net.sourceforge.tess4j/tess4j -->
+		<dependency>
+			<groupId>net.sourceforge.tess4j</groupId>
+			<artifactId>tess4j</artifactId>
+			<version>5.15.0</version>
 		</dependency>
 		<!-- https://mvnrepository.com/artifact/org.apache.httpcomponents/httpclient -->
 		<dependency>

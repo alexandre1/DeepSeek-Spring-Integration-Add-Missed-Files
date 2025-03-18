@@ -29,22 +29,22 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
-
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.InputStream;
+import net.sourceforge.tess4j.*;
+import java.io.*;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.web.multipart.MultipartFile;
 
 @Route("")
 @PageTitle("Receipt")
@@ -70,7 +70,6 @@ public class MainView extends VerticalLayout {
     }
 
 
-
     public MainView(ChatClient.Builder builder) {
         var client = builder.build();
         var buffer = new MemoryBuffer();
@@ -94,12 +93,17 @@ public class MainView extends VerticalLayout {
                 Component component = createComponent(e.getMIMEType(), e.getFileName(), bytes);
                 showOutput(e.getFileName(), component, output);
 
-                analyzeImage(targetFile, buffer);
+                // Call the modified singleFileUpload method
+                String ocrText = singleFileUpload(buffer, e.getFileName());
+                System.out.println("OCR Text: " + ocrText);
+
+                //analyzeImage(targetFile, buffer);
             } catch (Exception ex) {
                 System.out.println(ex.getMessage());
             }
         });
     }
+
 
 
     private void showReceipt(Receipt receipt) {
@@ -193,19 +197,18 @@ public class MainView extends VerticalLayout {
             ArrayNode content = mapper.createArrayNode();
             content.add(mapper.createObjectNode()
                     .put("type", "text")
-                    .put("text", "Please read within an OCR the receipt included om the image the record Receipt(String merchant, BigDecimal total, List<LineItem> lineItems describe the java structure of the image"));
+                    .put("text", "Please read the attached receipt and return the value in provided receipt record java to json format"));
             content.add(mapper.createObjectNode()
                     .put("type", "image_url")
                     .set("image_url", mapper.createObjectNode()
-                            .put("url", getFlowerImage())));
-
+                            .put("url", "data:image/jpeg;base64," + getFlowerImage())));
             message.set("content", content);
             messages.add(message);
 
             // Add fields to the payload
             payload.put("model", "deepseek/deepseek-r1:free");
             payload.set("messages", messages);
-            payload.put("max_tokens", 300);
+            payload.put("max_tokens", 1000);
 
             // Print the payload
             System.out.println("Request Payload: " + payload.toPrettyString());
@@ -219,13 +222,142 @@ public class MainView extends VerticalLayout {
             // Execute the request
             try (CloseableHttpClient client = HttpClients.createDefault()) {
                 try (CloseableHttpResponse response = client.execute(request)) {
-                    System.out.println("Status Code: " + response.getStatusLine().getStatusCode());
-                    System.out.println("Response Body: " + EntityUtils.toString(response.getEntity()));
+                    String responseBody = EntityUtils.toString(response.getEntity());
+                    System.out.println("Response Body: " + responseBody);
 
+                    // Parse the response
+                    ObjectNode responseJson = (ObjectNode) mapper.readTree(responseBody);
+                    String ocrText = responseJson.path("choices").get(0).path("message").path("content").asText();
+
+                    // Map the OCR text to the Receipt object
+                    Receipt receipt = parseReceiptFromOCR(ocrText);
+                    showReceipt(receipt);
                 }
+
             }
         } catch (Exception ex) {
             ex.printStackTrace();
         }
     }
+
+    private Receipt parseReceiptFromOCR(String ocrText) {
+        // Implement logic to parse the OCR text and extract merchant, total, and line items
+        // Example:
+        String merchant = extractMerchant(ocrText);
+        BigDecimal total = extractTotal(ocrText);
+        List<LineItem> lineItems = extractLineItems(ocrText);
+        return new Receipt(merchant, total, lineItems);
+    }
+
+    private String extractMerchant(String ocrText) {
+        String[] patterns = {"Merchant:", "Store:", "Vendor:"};
+        for (String pattern : patterns) {
+            int index = ocrText.indexOf(pattern);
+            if (index != -1) {
+                String merchantLine = ocrText.substring(index + pattern.length()).trim();
+                // Extract the entire line as the merchant name
+                return merchantLine.split("\n")[0].trim();
+            }
+        }
+        return "Unknown Merchant";
+    }
+
+    private BigDecimal extractTotal(String ocrText) {
+        String[] patterns = {"Total:", "Net Sales:", "Amount Due:", "Grand Total:"};
+        for (String pattern : patterns) {
+            int index = ocrText.indexOf(pattern);
+            if (index != -1) {
+                String totalLine = ocrText.substring(index + pattern.length()).trim();
+                // Use a regular expression to find the numeric value (including commas)
+                java.util.regex.Pattern amountPattern = java.util.regex.Pattern.compile("[\\d,]+(?:\\.\\d{2})?");
+                java.util.regex.Matcher matcher = amountPattern.matcher(totalLine);
+                if (matcher.find()) {
+                    String amount = matcher.group().replace(",", ""); // Remove commas
+                    return new BigDecimal(amount);
+                }
+            }
+        }
+        throw new IllegalArgumentException("Total amount not found in OCR text");
+    }
+
+    private List<LineItem> extractLineItems(String ocrText) {
+        List<LineItem> lineItems = new ArrayList<>();
+        String[] lines = ocrText.split("\n");
+
+        for (String line : lines) {
+            if (line.matches(".*\\$?\\d+(\\.\\d{2})?.*")) {
+                // Extract the item name and price
+                String[] parts = line.split("\\$");
+                if (parts.length >= 2) {
+                    String itemPart = parts[0].trim();
+                    String pricePart = "$" + parts[1].trim();
+
+                    // Extract the quantity if present
+                    int quantity = 1;
+                    if (itemPart.toLowerCase().startsWith("qty")) {
+                        String[] qtyParts = itemPart.split("\\s+");
+                        if (qtyParts.length >= 2) {
+                            try {
+                                quantity = Integer.parseInt(qtyParts[1]);
+                            } catch (NumberFormatException e) {
+                                // If quantity parsing fails, default to 1
+                            }
+                        }
+                        // The next line should contain the item name
+                        continue;
+                    }
+
+                    // Extract the price
+                    java.util.regex.Pattern pricePattern = java.util.regex.Pattern.compile("\\$?([\\d,]+(?:\\.\\d{2})?)");
+                    java.util.regex.Matcher matcher = pricePattern.matcher(pricePart);
+                    if (matcher.find()) {
+                        String priceStr = matcher.group(1).replace(",", "");
+                        BigDecimal price = new BigDecimal(priceStr);
+                        lineItems.add(new LineItem(itemPart, quantity, price));
+                    }
+                }
+            }
+        }
+        return lineItems;
+    }
+
+    public String singleFileUpload(MemoryBuffer buffer, String fileName) throws IOException, TesseractException {
+        InputStream inputStream = buffer.getInputStream();
+        byte[] bytes = IOUtils.toByteArray(inputStream);
+
+        // Save the file to the server
+        Path path = Paths.get("E://upload/" + fileName);
+        Files.write(path, bytes);
+
+        File convFile = new File(fileName);
+        FileUtils.copyInputStreamToFile(new ByteArrayInputStream(bytes), convFile);
+
+        Tesseract tesseract = new Tesseract();
+        tesseract.setDatapath("E:\\Program Files\\Tesseract-OCR\\tessdata");
+        String text = tesseract.doOCR(convFile);
+        tesseract.setLanguage("eng");
+
+        System.out.println(text);
+        System.out.println(convFile);
+
+        return text;
+    }
+    public String result() {
+        return "result";
+    }
+    private void run(MultipartFile file) {
+        // Implement the logic you want to execute with the file
+        System.out.println("Running additional operations on file: " + file.getOriginalFilename());
+    }
+    public static File convert(MultipartFile file) throws IOException {
+        File convFile = new File(file.getOriginalFilename());
+
+        convFile.createNewFile();
+        FileOutputStream fos = new FileOutputStream(convFile);
+        fos.write(file.getBytes());
+
+        fos.close();
+        return convFile;
+    }
+
 }
