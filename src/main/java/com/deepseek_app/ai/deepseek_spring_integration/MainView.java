@@ -40,6 +40,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -114,6 +116,7 @@ public class MainView extends VerticalLayout {
 
     private void showReceipt(Receipt receipt) {
         var items = new Grid<>(LineItem.class);
+        List<LineItem> list =  receipt.lineItems;
         items.setItems(receipt.lineItems());
 
         add(
@@ -257,7 +260,7 @@ public class MainView extends VerticalLayout {
     }
 
     private String extractMerchant(String ocrText) {
-        String[] patterns = {"Merchant:", "Store:", "Vendor:"};
+        String[] patterns = {"Merchant", "Store", "Vendor", "Market", "Receipt from","MARKET"};
         for (String pattern : patterns) {
             int index = ocrText.indexOf(pattern);
             if (index != -1) {
@@ -270,9 +273,9 @@ public class MainView extends VerticalLayout {
     }
 
     private BigDecimal extractTotal(String ocrText) {
-        String[] patterns = {"Total:", "Net Sales:", "Amount Due:", "Grand Total:"};
+        String[] patterns = {"Subtotal:", "Net Sales:", "Amount Due:", "Grand Total:", "Net Sales:", "Tax:", "Total :"};
         for (String pattern : patterns) {
-            int index = ocrText.indexOf(pattern);
+            int index = ocrText.toLowerCase().indexOf(pattern.toLowerCase());
             if (index != -1) {
                 String totalLine = ocrText.substring(index + pattern.length()).trim();
                 // Use a regular expression to find the numeric value (including commas)
@@ -297,30 +300,46 @@ public class MainView extends VerticalLayout {
                 String[] parts = line.split("\\$");
                 if (parts.length >= 2) {
                     String itemPart = parts[0].trim();
-                    String pricePart = "$" + parts[1].trim();
+                    // Extract the first word with only uppercase letters
+                    String firstAllUppercaseWord = extractFirstUppercaseWordsUntilSpace(itemPart);
 
-                    // Extract the quantity if present
-                    int quantity = 1;
-                    if (itemPart.toLowerCase().startsWith("qty")) {
-                        String[] qtyParts = itemPart.split("\\s+");
-                        if (qtyParts.length >= 2) {
-                            try {
-                                quantity = Integer.parseInt(qtyParts[1]);
-                            } catch (NumberFormatException e) {
-                                // If quantity parsing fails, default to 1
-                            }
-                        }
-                        // The next line should contain the item name
-                        continue;
+                    if (firstAllUppercaseWord != null) {
+                        System.out.println("ITEM PART : " + firstAllUppercaseWord);
                     }
 
-                    // Extract the price
-                    java.util.regex.Pattern pricePattern = java.util.regex.Pattern.compile("\\$?([\\d,]+(?:\\.\\d{2})?)");
-                    java.util.regex.Matcher matcher = pricePattern.matcher(pricePart);
-                    if (matcher.find()) {
-                        String priceStr = matcher.group(1).replace(",", "");
-                        BigDecimal price = new BigDecimal(priceStr);
-                        lineItems.add(new LineItem(itemPart, quantity, price));
+                    String pricePart = "$" + parts[1].trim();
+                    int quantity = 1; // Default quantity
+
+                    if (firstAllUppercaseWord != null) {
+
+
+                    // Check if the line starts with "Qty" (case-insensitive)
+                    if (itemPart.toLowerCase().startsWith("qty")) {
+                        // Extract the quantity
+                        String[] qtyParts = itemPart.split("\\s+");
+                        if (qtyParts.length >= 2) { // Ensure there is a quantity value after "Qty"
+                            try {
+                                quantity = Integer.parseInt(qtyParts[1]); // Parse the quantity
+                                System.out.println("QUANTITY FOUND : " + quantity);
+                            } catch (NumberFormatException e) {
+                                // If quantity parsing fails, default to 1
+                                System.out.println("QUANTITY PARSING FAILED, USING DEFAULT: 1");
+                            }
+                        }
+                    }
+                    }
+                    if (quantity > 0) {
+                        // Extract the price
+                        java.util.regex.Pattern pricePattern = java.util.regex.Pattern.compile("\\$?([\\d,]+(?:\\.\\d{2})?)");
+                        java.util.regex.Matcher matcher = pricePattern.matcher(pricePart);
+                        if (matcher.find()) {
+                            String priceStr = matcher.group(1).replace(",", "");
+                            BigDecimal price = new BigDecimal(priceStr);
+                            System.out.println("PRICE FOUND : " + price);
+                            lineItems.add(new LineItem(firstAllUppercaseWord, quantity, price));
+                        } else {
+                            System.out.println("NO PRICE FOUND");
+                        }
                     }
                 }
             }
@@ -328,6 +347,37 @@ public class MainView extends VerticalLayout {
         return lineItems;
     }
 
+    public static String extractFirstUppercaseWordsUntilSpace(String input) {
+        // Split the input string into words based on whitespace
+        String[] words = input.split("\\s+");
+        StringBuilder result = new StringBuilder();
+
+        // Iterate through each word
+        for (String word : words) {
+            // Check if the word contains only uppercase letters
+            if (isAllUppercase(word)) {
+                // Append the word to the result with a space
+                result.append(word).append(" ");
+            } else {
+                // Stop when a word does not contain only uppercase letters
+                break;
+            }
+        }
+
+        // Remove the trailing space (if any) and return the result
+        return result.toString().trim();
+    }
+
+    public static boolean isAllUppercase(String word) {
+        // Iterate through each character in the word
+        for (char ch : word.toCharArray()) {
+            // If any character is not an uppercase letter, return false
+            if (!Character.isUpperCase(ch)) {
+                return false;
+            }
+        }
+        return true; // All characters are uppercase
+    }
     public String singleFileUpload(MemoryBuffer buffer, String fileName) throws IOException, TesseractException {
         InputStream inputStream = buffer.getInputStream();
         byte[] bytes = IOUtils.toByteArray(inputStream);
