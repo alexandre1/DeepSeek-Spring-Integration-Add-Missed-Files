@@ -306,8 +306,8 @@ public class MainView extends VerticalLayout {
                     if (firstAllUppercaseWord != null  && firstAllUppercaseWord.length() > 0) {
                         System.out.println("ITEM PART : " + firstAllUppercaseWord);
                     } else {
-                        firstAllUppercaseWord = itemPart;
-                        System.out.println("ITEM PART CREATE: " + itemPart);
+                        firstAllUppercaseWord = extractLineWithoutSpecialChars(itemPart);
+                        System.out.println("ITEM PART CREATE: " + firstAllUppercaseWord);
                     }
 
                     String pricePart = "$" + parts[1].trim();
@@ -349,7 +349,43 @@ public class MainView extends VerticalLayout {
         }
         return lineItems;
     }
+    public static String extractLineWithoutSpecialChars(String input) {
+        // Define the regex pattern to match alphanumeric characters and spaces
+        String regex = "[a-zA-Z\\s]+";
 
+        // Compile the pattern
+        Pattern pattern = Pattern.compile(regex);
+
+        // Create a matcher for the input string
+        Matcher matcher = pattern.matcher(input);
+
+        // Find the first match
+        if (matcher.find()) {
+            return matcher.group();
+        }
+
+        // Return an empty string if no match is found
+        return "";
+    }
+    public static String extractFirstWord(String input) {
+        // Define the regex pattern to match a word starting with an uppercase letter
+        // followed by lowercase letters
+        String regex = "\\b[A-Z][a-z]*\\b";
+
+        // Compile the pattern
+        Pattern pattern = Pattern.compile(regex);
+
+        // Create a matcher for the input string
+        Matcher matcher = pattern.matcher(input);
+
+        // Find the first match
+        if (matcher.find()) {
+            return matcher.group();
+        }
+
+        // Return null if no match is found
+        return null;
+    }
     public static String extractFirstUppercaseWordsUntilSpace(String input) {
         // Split the input string into words based on whitespace
         String[] words = input.split("\\s+");
