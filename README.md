@@ -12,10 +12,14 @@ A seamless integration of DeepSeek's AI capabilities into Spring Boot applicatio
 ## Features ✨
 - 🚀 Text generation via DeepSeek's language models
 - 💬 Conversational AI chatbot implementation
+- 
 - ⚡ Spring Boot-native configuration
 - 🔒 Secure API key management
 - 📦 Ready-to-deploy REST API endpoints
-
+## New features
+- Implement non DeepSeek image text extraction
+- Implement OCR to extraction of a reciept image
+- Display the result in a MainView (Vaadin)
 ## Prerequisites 📋
 - Java 17+
 - Spring Boot 3.2+
@@ -121,6 +125,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ by [Saurav Kumar](https://linkedin.com/in/your-profile)**  
+**Built with ❤️ by [Saurav Kumar](https://linkedin.com/in/your-profile)**  Changes by Alexandre Jaquet
 [![GitHub Stars](https://img.shields.io/github/stars/sauravsku/DeepSeek-Spring-Integration?style=social)](https://github.com/sauravsku/DeepSeek-Spring-Integration/stargazers)
 
