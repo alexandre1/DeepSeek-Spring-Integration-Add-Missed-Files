@@ -303,8 +303,11 @@ public class MainView extends VerticalLayout {
                     // Extract the first word with only uppercase letters
                     String firstAllUppercaseWord = extractFirstUppercaseWordsUntilSpace(itemPart);
 
-                    if (firstAllUppercaseWord != null) {
+                    if (firstAllUppercaseWord != null  && firstAllUppercaseWord.length() > 0) {
                         System.out.println("ITEM PART : " + firstAllUppercaseWord);
+                    } else {
+                        firstAllUppercaseWord = itemPart;
+                        System.out.println("ITEM PART CREATE: " + itemPart);
                     }
 
                     String pricePart = "$" + parts[1].trim();
@@ -313,20 +316,20 @@ public class MainView extends VerticalLayout {
                     if (firstAllUppercaseWord != null) {
 
 
-                    // Check if the line starts with "Qty" (case-insensitive)
-                    if (itemPart.toLowerCase().startsWith("qty")) {
-                        // Extract the quantity
-                        String[] qtyParts = itemPart.split("\\s+");
-                        if (qtyParts.length >= 2) { // Ensure there is a quantity value after "Qty"
-                            try {
-                                quantity = Integer.parseInt(qtyParts[1]); // Parse the quantity
-                                System.out.println("QUANTITY FOUND : " + quantity);
-                            } catch (NumberFormatException e) {
-                                // If quantity parsing fails, default to 1
-                                System.out.println("QUANTITY PARSING FAILED, USING DEFAULT: 1");
+                        // Check if the line starts with "Qty" (case-insensitive)
+                        if (itemPart.toLowerCase().startsWith("qty")) {
+                            // Extract the quantity
+                            String[] qtyParts = itemPart.split("\\s+");
+                            if (qtyParts.length >= 2) { // Ensure there is a quantity value after "Qty"
+                                try {
+                                    quantity = Integer.parseInt(qtyParts[1]); // Parse the quantity
+                                    System.out.println("QUANTITY FOUND : " + quantity);
+                                } catch (NumberFormatException e) {
+                                    // If quantity parsing fails, default to 1
+                                    System.out.println("QUANTITY PARSING FAILED, USING DEFAULT: 1");
+                                }
                             }
                         }
-                    }
                     }
                     if (quantity > 0) {
                         // Extract the price
